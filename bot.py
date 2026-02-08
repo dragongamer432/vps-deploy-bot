@@ -8,7 +8,7 @@ import random
 import psutil
 import logging
 
-TOKEN = "MTQ3MDA0NDQ5MzQyMzA1MTAwNw.GrD9Vu.0364hBxxXSRZPNiKyWAJm-wwpT_c3cyzMJ-z0Q"
+TOKEN = "bot-token"
 OWNER_ID = 1212951893651759225 
 IMAGE = "jrei/systemd-ubuntu:22.04"
 DATA_FILE = "vps_db.json"
