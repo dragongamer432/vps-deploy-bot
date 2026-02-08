@@ -10,7 +10,7 @@ import logging
 
 # ---------------- HARDCODED CONFIG ----------------
 TOKEN = "YOUR_BOT_TOKEN_HERE"
-OWNER_ID = 1212951893651759225 
+OWNER_ID = 1346664897005621308 
 IMAGE = "jrei/systemd-ubuntu:22.04"
 DATA_FILE = "vps_db.json"
 
