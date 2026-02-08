@@ -8,15 +8,17 @@ import random
 import psutil
 import logging
 
-# ---------------- CONFIG ----------------
-TOKEN = "YOUR_BOT_TOKEN"
+# ---------------- HARDCODED CONFIG ----------------
+TOKEN = "YOUR_BOT_TOKEN_HERE"
 OWNER_ID = 1212951893651759225 
 IMAGE = "jrei/systemd-ubuntu:22.04"
 DATA_FILE = "vps_db.json"
 
+# Logging setup
 logging.basicConfig(level=logging.INFO, handlers=[logging.FileHandler("dragoncloud.log"), logging.StreamHandler()])
 logger = logging.getLogger("DragonCloud")
 
+# ---------------- DATABASE ----------------
 def load_db():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as f: return json.load(f)
@@ -27,6 +29,7 @@ def save_db(data):
 
 vps_db = load_db()
 
+# ---------------- BOT INIT ----------------
 class DragonBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
@@ -36,11 +39,8 @@ class DragonBot(commands.Bot):
 bot = DragonBot()
 
 # ---------------- HELPERS ----------------
-
 async def get_tmate_links(c_name):
-    """Fetches both SSH and Web links from tmate"""
     sock = f"/tmp/tmate-{c_name}.sock"
-    # Command to get SSH link and Web link
     cmd = (
         f"tmate -S {sock} new-session -d && sleep 5 && "
         f"tmate -S {sock} display -p '#{{tmate_ssh}}' && "
@@ -49,7 +49,6 @@ async def get_tmate_links(c_name):
     proc = await asyncio.create_subprocess_exec("docker", "exec", c_name, "bash", "-c", cmd, stdout=asyncio.subprocess.PIPE)
     stdout, _ = await proc.communicate()
     output = stdout.decode().strip().split('\n')
-    
     ssh = output[0] if len(output) > 0 else "Generating..."
     web = output[1] if len(output) > 1 else "Generating..."
     return ssh, web
@@ -62,19 +61,18 @@ async def deploy(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
     if any(v['owner'] == user_id for v in vps_db.values()):
-        return await interaction.followup.send("❌ You already have a VPS!", ephemeral=True)
+        return await interaction.followup.send("❌ You already have an active VPS!", ephemeral=True)
 
     c_name = f"dragon-{random.randint(1000, 9999)}"
-
-    # Note: No port mapping needed since we use tmate tunnels
+    
+    # Docker Run (Resource Caps for 64GB Host)
     cmd = ["docker", "run", "-d", "--privileged", "--name", c_name, "--memory", "12g", "--cpus", "2", IMAGE]
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE)
     stdout, _ = await proc.communicate()
     container_id = stdout.decode().strip()[:12]
 
-    # Setup Environment
+    # Env Setup
     await asyncio.create_subprocess_exec("docker", "exec", c_name, "bash", "-c", "apt update && apt install -y tmate curl sudo")
-    
     ssh_link, web_link = await get_tmate_links(c_name)
 
     vps_db[container_id] = {"owner": user_id, "name": c_name, "status": "Active"}
@@ -89,15 +87,14 @@ async def deploy(interaction: discord.Interaction):
         f"**SSH Connection**\n`{ssh_link}`\n\n"
         f"**Points Deducted**\n0 points"
     )
-    embed.set_footer(text="Enjoy Your VPS!")
     
     try:
         await interaction.user.send(embed=embed)
-        await interaction.followup.send(f"✅ Deployed! Details sent to DM.", ephemeral=True)
+        await interaction.followup.send(f"✅ Success! Check your DMs.", ephemeral=True)
     except:
-        await interaction.followup.send(f"⚠️ VPS Ready: `{container_id}`. DMs are locked!", ephemeral=True)
+        await interaction.followup.send(f"⚠️ VPS Created: `{container_id}`, but I couldn't DM you.", ephemeral=True)
 
-@bot.tree.command(name="suspend", description="Admin: Suspend a VPS")
+@bot.tree.command(name="suspend", description="Admin: Pause a VPS")
 async def suspend(interaction: discord.Interaction, container_id: str):
     if interaction.user.id != OWNER_ID: return
     if container_id in vps_db:
@@ -106,16 +103,16 @@ async def suspend(interaction: discord.Interaction, container_id: str):
         save_db(vps_db)
         await interaction.response.send_message(f"⏸️ `{container_id}` Suspended.")
 
-@bot.tree.command(name="unsuspend", description="Admin: Unsuspend a VPS")
+@bot.tree.command(name="unsuspend", description="Admin: Unpause a VPS")
 async def unsuspend(interaction: discord.Interaction, container_id: str):
     if interaction.user.id != OWNER_ID: return
     if container_id in vps_db:
         await asyncio.create_subprocess_exec("docker", "unpause", vps_db[container_id]['name'])
         vps_db[container_id]['status'] = "Active"
         save_db(vps_db)
-        await interaction.response.send_message(f"▶️ `{container_id}` Activated.")
+        await interaction.response.send_message(f"▶️ `{container_id}` Unsuspended.")
 
-@bot.tree.command(name="delete", description="Admin: Delete a VPS")
+@bot.tree.command(name="delete", description="Admin: Wipe a VPS")
 async def delete(interaction: discord.Interaction, container_id: str):
     if interaction.user.id != OWNER_ID: return
     if container_id in vps_db:
@@ -124,12 +121,12 @@ async def delete(interaction: discord.Interaction, container_id: str):
         save_db(vps_db)
         await interaction.response.send_message(f"🗑️ `{container_id}` Deleted.")
 
-@bot.tree.command(name="status", description="Host Status")
+@bot.tree.command(name="status", description="Host Hardware Status")
 async def status(interaction: discord.Interaction):
     ram = psutil.virtual_memory()
-    embed = discord.Embed(title="📊 DragonCloud Status", color=discord.Color.blue())
-    embed.add_field(name="RAM", value=f"{ram.percent}% ({round(ram.used/1024**3, 1)}/64GB)")
-    embed.add_field(name="IPv6 Mode", value="Enabled ✅")
+    embed = discord.Embed(title="📊 DragonCloud Host Status", color=discord.Color.blue())
+    embed.add_field(name="RAM Usage", value=f"`{ram.percent}%` ({round(ram.used/1024**3, 1)}/64GB)")
+    embed.add_field(name="Active VPS", value=f"`{len(vps_db)}`")
     await interaction.response.send_message(embed=embed)
 
 bot.run(TOKEN)
